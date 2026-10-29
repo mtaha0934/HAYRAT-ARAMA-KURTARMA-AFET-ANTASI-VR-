@@ -208,6 +208,7 @@
       <p>Bir deprem oldu. Evden çıkmadan önce <b>2 dakikan</b> var. Afet ve acil durum çantasına gerekli olanları topla, gereksizleri bırak.</p>
       <ul class="how">
         <li>Önce deneme alanında yürümeyi ve eşya toplamayı öğren. Dış kapıdan içeri girince deprem uyarısı anonsu verilir; anons bitince süre başlar.</li>
+        <li>Çantan hazırsa evin kapısından dışarı çık: ne kadar <b>erken ve doğru</b> çıkarsan o kadar <b>bonus puan</b> kazanırsın. Süre bitene kadar evde kalırsan sarsıntıya evde yakalanır ve puan kaybedersin.</li>
         <li>Evdeki tüm odaları gez; imleçle eşyaya nişan alıp <b>Boşluk</b> tuşuna bas (dokunmatikte eşyaya dokun).</li>
         <li>Çantanın kapasitesi sınırsız ama yanlış eşyalar puanını düşürür.</li>
         <li>Çantan düğmesinden topladıklarını gözden geçirebilir, yanlışı geri koyabilirsin.</li>
@@ -556,8 +557,94 @@ var PHOTO = {"stucco": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYS
   var root = new THREE.Group();
   scene.add(root);
   box(root, 16.0, -0.19, D / 2, 32.5, 0.3, D + 0.5, M.slab);
-  var doorLeaf = new THREE.Mesh(new THREE.BoxGeometry(0.06, 2.15, 1.2), mat(0x6B4A36, 'wood')); doorLeaf.position.set(W, 1.075, 4.7); doorLeaf.castShadow = true; doorLeaf.visible = false; root.add(doorLeaf);
+  var doorLeaf = new THREE.Group(); doorLeaf.position.set(W, 0, 4.1); doorLeaf.visible = false; root.add(doorLeaf);
+  var exitSign = null;
+  (function () {
+    var wood = mat(0x6B4A36, 'wood'), dk = new THREE.MeshStandardMaterial({ color: 0x4E3426, roughness: 0.7 }), chr = new THREE.MeshStandardMaterial({ color: 0xC9CED2, roughness: 0.25, metalness: 0.9 }), blk = new THREE.MeshStandardMaterial({ color: 0x15171A, roughness: 0.4 });
+    function part(geo, m, x, y, z, cast) { var o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.castShadow = !!cast; doorLeaf.add(o); return o; }
+    var wood2 = wood.clone(); wood2.color.multiplyScalar(0.72);
+    part(new THREE.BoxGeometry(0.05, 2.12, 1.14), wood, 0, 1.06, 0.58, true);
+    [-1, 1].forEach(function (sd) {
+      part(new THREE.BoxGeometry(0.012, 0.62, 0.78), wood2, sd * 0.029, 1.52, 0.58);
+      part(new THREE.BoxGeometry(0.012, 0.95, 0.78), wood2, sd * 0.029, 0.62, 0.58);
+      var ro = part(new THREE.CylinderGeometry(0.032, 0.032, 0.012, 20), chr, sd * 0.034, 1.0, 1.02); ro.rotation.z = Math.PI / 2;
+      part(new THREE.BoxGeometry(0.03, 0.024, 0.16), chr, sd * 0.062, 1.0, 0.95);
+      var pe = part(new THREE.CylinderGeometry(0.014, 0.014, 0.012, 16), chr, sd * 0.03, 1.62, 0.58); pe.rotation.z = Math.PI / 2;
+    });
+    part(new THREE.BoxGeometry(0.022, 0.07, 0.035), chr, -0.04, 1.14, 1.02);
+    part(new THREE.BoxGeometry(0.014, 0.12, 0.03), blk, -0.034, 1.0, 1.075);
+    function fr(w, h, d, x, y, z) { var o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), dk); o.position.set(x, y, z); root.add(o); }
+    fr(0.2, 2.2, 0.07, W, 1.1, 4.07); fr(0.2, 2.2, 0.07, W, 1.1, 5.33); fr(0.2, 0.07, 1.34, W, 2.2, 4.7);
+    var c = cv(256, 80), g = c.getContext('2d');
+    g.fillStyle = '#0B7A3B'; g.fillRect(0, 0, 256, 80); g.strokeStyle = '#FFFFFF'; g.lineWidth = 4; g.strokeRect(4, 4, 248, 72);
+    g.fillStyle = '#FFFFFF'; g.font = '700 46px Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('ÇIKIŞ', 112, 42);
+    g.beginPath(); g.moveTo(206, 40); g.lineTo(226, 40); g.lineTo(218, 30); g.moveTo(226, 40); g.lineTo(218, 50); g.stroke();
+    var t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding;
+    exitSign = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.156), new THREE.MeshBasicMaterial({ map: t, toneMapped: false }));
+    exitSign.position.set(W - 0.12, 2.4, 4.7); exitSign.rotation.y = -Math.PI / 2; exitSign.visible = false; root.add(exitSign);
+  })();
   var doorBlock = { x0: 19.9, z0: 4.1, x1: 20.1, z1: 5.3 };
+  /* ---------- kapının dışı: apartman merdiven boşluğu (yalnızca oyun sırasında görünür) ---------- */
+  var stairG = new THREE.Group(); stairG.visible = false; root.add(stairG);
+  var demoFloor = null, slabMain = null, demoPath = null;
+  function findFloors() { root.children.forEach(function (o) { var p = o.geometry && o.geometry.parameters; if (!p || o.geometry.type !== 'BoxGeometry') return; if (Math.abs(p.width - 12) < 1e-6 && Math.abs(p.depth - 10) < 1e-6 && Math.abs(p.height - 0.04) < 1e-6) demoFloor = o; if (Math.abs(p.width - 32.5) < 1e-6 && Math.abs(p.height - 0.3) < 1e-6) slabMain = o; }); }
+  function setStairs(on) { if (!demoFloor || !slabMain) findFloors(); stairG.visible = on; if (demoFloor) demoFloor.visible = !on; if (slabMain) slabMain.visible = !on; if (demoPath) demoPath.visible = !on; }
+  (function () {   // zemin plakası parçaları (çukur için boşluklu)
+    function sl(x0, x1, z0, z1) { var o = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, 0.3, z1 - z0), M.slab); o.position.set((x0 + x1) / 2, -0.19, (z0 + z1) / 2); o.receiveShadow = true; stairG.add(o); }
+    sl(-0.25, 21.7, -0.25, 10.25); sl(21.7, 24.3, -0.25, 3.75); sl(21.7, 24.3, 6.1, 10.25); sl(24.3, 32.25, -0.25, 10.25);
+  })();
+  (function () {
+    var X0 = 20.13, X1 = 24.3, Z0 = 3.3, Z1 = 6.1, HH = 2.6;
+    function lm(hex, r, em) { var m = new THREE.MeshStandardMaterial({ color: new THREE.Color(hex).convertSRGBToLinear(), roughness: r == null ? 0.9 : r }); if (em) { m.emissive = new THREE.Color(em).convertSRGBToLinear(); m.emissiveIntensity = 0.5; } return m; }
+    function bx(w, h, d, m, x, y, z) { var o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); o.receiveShadow = true; stairG.add(o); return o; }
+    var floorM = lm(0xB6B2A8, 0.55, 0x2A2824), wallHi = lm(0xE6E2D8, 0.95, 0x34322E), wallLo = lm(0x8F9CA3, 0.8, 0x1C2226), ceilM = lm(0xF0EEE8, 0.95, 0x34322E);
+    var PX0 = 21.7, PZ0 = 3.75, PD = -2.8;   // merdiven boşluğu (çukur): x 21.7–24.3, z 3.75–6.1, taban y=-2.8
+    bx(PX0 - X0, 0.04, Z1 - Z0 + 0.1, floorM, (X0 + PX0) / 2, -0.02, (Z0 + Z1) / 2);
+    bx(X1 - PX0, 0.04, PZ0 - Z0 + 0.05, floorM, (PX0 + X1) / 2, -0.02, (Z0 + PZ0) / 2 - 0.025);
+    bx(X1 - X0, 0.1, Z1 - Z0 + 0.2, ceilM, (X0 + X1) / 2, HH + 0.05, (Z0 + Z1) / 2);
+    [Z0, Z1].forEach(function (z) { bx(X1 - X0, 1.2, 0.1, wallLo, (X0 + X1) / 2, 0.6, z); bx(X1 - X0, HH - 1.2, 0.1, wallHi, (X0 + X1) / 2, 1.2 + (HH - 1.2) / 2, z); });
+    bx(0.1, 1.2, Z1 - Z0 + 0.1, wallLo, X1, 0.6, (Z0 + Z1) / 2); bx(0.1, HH - 1.2, Z1 - Z0 + 0.1, wallHi, X1, 1.2 + (HH - 1.2) / 2, (Z0 + Z1) / 2);
+    bx(0.04, 0.1, Z1 - Z0, lm(0x6E7A80), X0 + 0.02, 1.2, (Z0 + Z1) / 2);
+    /* komşu kapısı (sol duvar) */
+    var dm = lm(0x7B5A3F, 0.7), chm = new THREE.MeshStandardMaterial({ color: 0xC9CED2, roughness: 0.25, metalness: 0.9 });
+    bx(1.0, 2.1, 0.06, lm(0x4E3426), 21.9, 1.05, Z0 + 0.06); bx(0.86, 2.04, 0.05, dm, 21.9, 1.02, Z0 + 0.1);
+    bx(0.14, 0.03, 0.04, chm, 21.58, 1.0, Z0 + 0.14); bx(0.03, 0.03, 0.03, chm, 21.9, 1.6, Z0 + 0.14);
+    var pc = cv(64, 64), pg = pc.getContext('2d'); pg.fillStyle = '#C9CED2'; pg.fillRect(0, 0, 64, 64); pg.fillStyle = '#222'; pg.font = '700 44px Arial'; pg.textAlign = 'center'; pg.textBaseline = 'middle'; pg.fillText('4', 32, 34);
+    var pt = new THREE.CanvasTexture(pc), pl = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 0.1), new THREE.MeshStandardMaterial({ map: pt, roughness: 0.4 })); pl.position.set(21.9, 1.78, Z0 + 0.131); stairG.add(pl);
+    /* aşağı inen merdiven: iki kollu, ara sahanlıklı; kapıdan bakınca sağda inen kol, solda boşluk (kuyu) */
+    var stM = lm(0xC7C3B9, 0.8), shM = lm(0x7F8A90, 0.85), rm = new THREE.MeshStandardMaterial({ color: 0x1B1D20, roughness: 0.4, metalness: 0.5 });
+    var RUN = 0.26, RISE = 0.2, NS = 7, PZ1 = Z1, ZM = 4.88;   // 1. kol z ZM+0.07..6.1 ; 2. kol z 3.75..ZM-0.08
+    var midX = PX0 + NS * RUN, midY = -NS * RISE;                // ara sahanlık: x 23.52–24.3, y -1.4
+    function fill(x0, x1, z0, z1, top, m) { bx(x1 - x0, top - PD, z1 - z0, m, (x0 + x1) / 2, (top + PD) / 2, (z0 + z1) / 2); }
+    for (var i = 0; i < NS; i++) fill(PX0 + i * RUN, PX0 + (i + 1) * RUN, ZM + 0.07, PZ1 - 0.05, -(i + 1) * RISE, stM);
+    fill(midX, X1 - 0.05, PZ0, PZ1 - 0.05, midY, stM);
+    for (i = 0; i < NS; i++) fill(midX - (i + 1) * RUN, midX - i * RUN, PZ0 + 0.05, ZM - 0.08, midY - (i + 1) * RISE, stM);
+    bx(X1 - PX0, 0.04, PZ1 - PZ0, lm(0x9A978F, 0.6, 0x1E1D1A), (PX0 + X1) / 2, PD - 0.02, (PZ0 + PZ1) / 2);          // zemin kat tabanı
+    bx(0.1, -PD, PZ1 - PZ0 + 0.1, wallLo, PX0 - 0.05, PD / 2, (PZ0 + PZ1) / 2);                       // çukurun yakın duvarı
+    bx(X1 - PX0, -PD, 0.1, wallLo, (PX0 + X1) / 2, PD / 2, PZ0);                                                      // çukurun sol duvarı
+    bx(X1 - PX0, -PD, 0.1, wallLo, (PX0 + X1) / 2, PD / 2, PZ1);                                                      // çukurun sağ duvarı
+    bx(0.1, -PD, PZ1 - PZ0, wallLo, X1, PD / 2, (PZ0 + PZ1) / 2);                                                     // çukurun uç duvarı
+    bx(0.03, 0.4, 0.15, shM, PX0 + 0.1, PD + 0.2, 4.0);   // zemin kat kapısı levhası yerine kolon izi
+    /* korkuluklar: sahanlık kenarında (kuyu tarafı) ve inen kolun kuyu yanında eğimli */
+    function post(x, y0, y1, z) { var o = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, y1 - y0, 8), rm); o.position.set(x, (y0 + y1) / 2, z); stairG.add(o); }
+    function bar(p0, p1) { var d = p1.clone().sub(p0), L = d.length(), o = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, L, 10), rm); o.position.copy(p0).add(p1).multiplyScalar(0.5); o.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()); stairG.add(o); }
+    bar(new THREE.Vector3(PX0 + 0.05, 0.98, PZ0 + 0.1), new THREE.Vector3(PX0 + 0.05, 0.98, ZM + 0.07));
+    for (var zz = PZ0 + 0.1; zz <= ZM + 0.08; zz += 0.2) post(PX0 + 0.05, 0, 0.98, zz);
+    bar(new THREE.Vector3(PX0 + 0.05, 0.98, ZM + 0.07), new THREE.Vector3(midX, midY + 0.98, ZM + 0.07));
+    for (i = 0; i < NS; i += 1) post(PX0 + i * RUN + RUN / 2, -(i + 1) * RISE, -(i + 1) * RISE + 0.96, ZM + 0.07);
+    bar(new THREE.Vector3(midX, midY + 0.98, ZM + 0.07), new THREE.Vector3(midX, midY + 0.98, PZ0 + 0.1));
+    bar(new THREE.Vector3(midX, midY + 0.98, PZ0 + 0.1), new THREE.Vector3(X1 - 0.08, midY + 0.98, PZ0 + 0.1));
+    /* tavan lambası ve pencere */
+    var lamp = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.07, 24), new THREE.MeshStandardMaterial({ color: 0xFFFFFF, emissive: 0xFFF1D2, emissiveIntensity: 1.2, roughness: 0.5 })); lamp.position.set(22.2, HH - 0.02, 4.7); stairG.add(lamp);
+    bx(0.04, 1.5, 1.1, lm(0x56606A), X1 - 0.05, 1.55, 3.95); var gl = new THREE.Mesh(new THREE.PlaneGeometry(0.96, 1.36), new THREE.MeshBasicMaterial({ color: new THREE.Color(0xDCEBFA).convertSRGBToLinear() })); gl.position.set(X1 - 0.069, 1.55, 3.95); gl.rotation.y = -Math.PI / 2; stairG.add(gl);
+    /* yangın söndürücü */
+    var fe = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.4, 14), lm(0xC0261E, 0.4)); fe.position.set(23.5, 0.55, Z0 + 0.12); stairG.add(fe);
+    var f2 = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.1, 8), rm); f2.position.set(23.5, 0.8, Z0 + 0.12); stairG.add(f2);
+    /* kat levhası */
+    var kc = cv(256, 96), kg = kc.getContext('2d'); kg.fillStyle = '#1F4E79'; kg.fillRect(0, 0, 256, 96); kg.fillStyle = '#fff'; kg.font = '700 52px Arial'; kg.textAlign = 'center'; kg.textBaseline = 'middle'; kg.fillText('3. KAT', 128, 50);
+    var kt = new THREE.CanvasTexture(kc), kp = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.19), new THREE.MeshStandardMaterial({ map: kt, roughness: 0.5 })); kp.position.set(X1 - 0.052, 2.05, 5.2); kp.rotation.y = -Math.PI / 2; stairG.add(kp);
+  })();
+
 
   var PHFLOOR = { salon: ['lam', 1.6, 0.5, 0.8], yatak: ['lam', 1.6, 0.5, 0.8], cocuk: ['lam', 1.6, 0.5, 0.8], calisma: ['lam', 1.6, 0.5, 0.8], hol: ['herr', 1.3, 0.45, 0.8], mutfak: ['itile', 1.8, 0.3, 0.7], depo: ['gran', 1.8, 0.4, 0.8], demo: ['itile', 1.8, 0.3, 0.7] };
   ROOMS.forEach(function (r) {
@@ -1331,7 +1418,7 @@ panel(17.06, 5.46, 18.1, 5.46 + tk); panel(18.9, 5.46, 19.875, 5.46 + tk);
   signBoard(27.3, 1.7, 0.17, 0, 2.0, 1.1, 'EŞYA TOPLA', 'Nişanı eşyaya getir. BOŞLUK: çantaya at. E: eline al / bırak. G: fırlat. Masadan dene!', '#2F7D4F');
   signBoard(24.6, 1.7, 9.83, Math.PI, 2.0, 1.1, 'ÇANTA', 'Sağ üstteki Çanta düğmesi topladıklarını gösterir. Yanlış aldıysan Geri koy ile çantadan çıkar.', '#7A3FA0');
   signBoard(27.3, 1.7, 9.83, Math.PI, 2.0, 1.1, 'DOĞRU MU YANLIŞ MI?', 'Afet çantasına gerekli eşyalar puan kazandırır, gereksizler puan kaybettirir. Masadaki kulaklığı almayı dene!', '#B45309');
-  signBoard(20.17, 1.7, 2.2, Math.PI / 2, 2.0, 1.1, 'HAZIR MISIN?', 'Ev kapısından içeri girdiğin an 2:00 süre başlar. Kapı arkandan kapanır!', '#B91C1C');
+  signBoard(20.17, 1.7, 2.2, Math.PI / 2, 2.0, 1.1, 'HAZIR MISIN?', 'Kapıdan girince 2:00 süre başlar. Çantan hazırsa aynı kapıdan çık: erken ve doğru çıkana bonus puan! Süre bitince evde kalırsan puan kaybedersin.', '#B91C1C');
   signBoard(20.17, 1.7, 7.2, Math.PI / 2, 2.0, 1.1, 'İPUCU', 'Eşyalar masalarda, tezgâhlarda, raflarda ve yerde olabilir. Bütün odalara bak!', '#0F766E');
   (function () {   // ZOR MOD geçidi: deneme alanı kuzey duvarı, ÇANTA panosunun yanı
     var c = cv(256, 512), g = c.getContext('2d');
@@ -1365,7 +1452,7 @@ panel(17.06, 5.46, 18.1, 5.46 + tk); panel(18.9, 5.46, 19.875, 5.46 + tk);
     for (var x = 80; x < 1024; x += 130) { g.beginPath(); g.moveTo(x + 40, 28); g.lineTo(x, 64); g.lineTo(x + 40, 100); g.stroke(); }
     var t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.anisotropy = 8;
     var m = new THREE.Mesh(new THREE.PlaneGeometry(9.3, 1.2), new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false }));
-    m.rotation.x = -Math.PI / 2; m.position.set(25.25, 0.014, 4.7); furnG.add(m);
+    m.rotation.x = -Math.PI / 2; m.position.set(25.25, 0.014, 4.7); furnG.add(m); demoPath = m;
   })();
 
   // Balkon
@@ -1523,7 +1610,10 @@ panel(17.06, 5.46, 18.1, 5.46 + tk); panel(18.9, 5.46, 19.875, 5.46 + tk);
     walk: coarse ? 'Düğmelerle yürü, ekranı sürükleyerek etrafına bak.' : 'W A S D ile yürü, ok tuşlarıyla dön ya da sürükleyerek etrafına bak.'
   };
 
-  var lawn = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: new THREE.Color(0x86A06E).convertSRGBToLinear(), roughness: 1 })); lawn.rotation.x = -Math.PI / 2; lawn.position.set(10, -0.34, 5); lawn.visible = false; scene.add(lawn);
+  var lawn = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: new THREE.Color(0x86A06E).convertSRGBToLinear(), roughness: 1 })); lawn.rotation.x = -Math.PI / 2; lawn.position.set(10, -0.34, 5);
+  (function () { var sh = new THREE.Shape(); sh.moveTo(-200, -200); sh.lineTo(200, -200); sh.lineTo(200, 200); sh.lineTo(-200, 200); sh.lineTo(-200, -200);
+    var h = new THREE.Path(); h.moveTo(11.7, -1.1); h.lineTo(11.7, 1.25); h.lineTo(14.3, 1.25); h.lineTo(14.3, -1.1); h.lineTo(11.7, -1.1); sh.holes.push(h);
+    lawn.geometry.dispose(); lawn.geometry = new THREE.ShapeGeometry(sh); })(); lawn.visible = false; scene.add(lawn);
   function setMode(m) {
     mode = m;
     var inWalk = m === 'walk';
@@ -1776,6 +1866,7 @@ panel(17.06, 5.46, 18.1, 5.46 + tk); panel(18.9, 5.46, 19.875, 5.46 + tk);
 
   /* ================= OYUN: eşyalar ================= */
   var GAME_SEC = 120;
+  var BONUS_MAX = 15, PEN_HOME = 15;   // süre bonusu (en çok) ve evde yakalanma cezası
   // cls: core (temel, toplam 80) · extra (ekstra, toplam 20) · wrong (yanlış, eksi puan)
   var ITEMS = [
     { id: 'su', n: 'Su', e: '💧', cls: 'core', pts: 5, c: 0x3E8EDB, room: 'mutfak' },
@@ -2408,7 +2499,7 @@ panel(17.06, 5.46, 18.1, 5.46 + tk); panel(18.9, 5.46, 19.875, 5.46 + tk);
     G.state = 'demo'; G.bag = []; G.left = GAME_SEC;
     bagN.textContent = '0';
     clockEl.textContent = 'Deneme'; clockEl.parentNode.classList.remove('warn');
-    doorLeaf.visible = false;
+    doorLeaf.visible = false; exitSign.visible = false; setStairs(false); doorLeaf.rotation.y = 0;
     var di = colliders.indexOf(doorBlock); if (di >= 0) colliders.splice(di, 1);
     placeDemoItems();
     walk.x = 28.0; walk.z = 5.0; walk.yaw = -Math.PI / 2; walk.pitch = 0;
@@ -2437,7 +2528,7 @@ panel(17.06, 5.46, 18.1, 5.46 + tk); panel(18.9, 5.46, 19.875, 5.46 + tk);
       walk.x = p[0]; walk.z = p[1]; walk.yaw = Math.PI / 2; walk.pitch = 0;
       vrPlace(p[0], p[1], Math.PI / 2);
     }
-    doorLeaf.visible = true;
+    doorLeaf.visible = true; exitSign.visible = true; setStairs(true); doorT = 0; doorLeaf.rotation.y = 0;
     if (colliders.indexOf(doorBlock) < 0) colliders.push(doorBlock);
     keys = {}; pad = {};
     setMode('walk');
@@ -2530,7 +2621,7 @@ panel(17.06, 5.46, 18.1, 5.46 + tk); panel(18.9, 5.46, 19.875, 5.46 + tk);
       if (G.state !== 'alert') return;
       G.state = 'play';
       $('finBtn').style.display = '';
-      toast('Süre başladı! 2:00');
+      toast('Süre başladı! 2:00 · hazırsan kapıdan çık');
     }
     alertDone = go;
     var t0 = Date.now();
@@ -2921,7 +3012,7 @@ panel(17.06, 5.46, 18.1, 5.46 + tk); panel(18.9, 5.46, 19.875, 5.46 + tk);
   }
   $('seeBtn').addEventListener('click', function () { parkCap.classList.remove('show'); setTimeout(function () { parkCap.classList.remove('on'); }, 400); if (ENDQ.res) ENDQ.res(); });
 
-  function finishGame(timeUp) {
+  function finishGame(timeUp, how) {
     if (G.state !== 'play') return;
     alertStop();
     G.state = 'quake';
@@ -2930,6 +3021,12 @@ panel(17.06, 5.46, 18.1, 5.46 + tk); panel(18.9, 5.46, 19.875, 5.46 + tk);
     padEl.hidden = true;
     $('finBtn').style.display = 'none'; grabBtn.style.display = 'none'; throwBtn.style.display = 'none';
     var sc = scoreOf(); VR.timeUp = timeUp;
+    how = how || (timeUp ? 'time' : 'btn');
+    var itemSc = sc, tLeft = Math.max(0, G.left);
+    var bonus = how === 'exit' ? Math.round(BONUS_MAX * Math.pow(Math.max(0, itemSc) / 100, 2) * tLeft / GAME_SEC) : 0, pen = how === 'exit' ? 0 : PEN_HOME;
+    sc = Math.max(0, Math.min(100, itemSc + bonus - pen));
+    G.res = { item: itemSc, bonus: bonus, pen: pen, final: sc, left: Math.round(tLeft), how: how };
+    var brk = '<p class="brk">Eşya puanı: <b>' + itemSc + '</b>' + (how === 'exit' ? ' · Süre bonusu: <b style="color:#15803D">+' + bonus + '</b> (' + Math.round(tLeft) + ' sn kala çıktın)' : ' · Sarsıntıya evde yakalandın: <b style="color:#DC2626">−' + pen + '</b>') + '</p>';
     var rows = G.bag.map(function (id) {
       var it = ITEM[id];
       var good = it.pts > 0;
@@ -2941,8 +3038,8 @@ panel(17.06, 5.46, 18.1, 5.46 + tk); panel(18.9, 5.46, 19.875, 5.46 + tk);
     var coreMissed = ITEMS.filter(function (it) { return it.cls === 'core' && G.bag.indexOf(it.id) < 0; }).length;
     var wrongN = G.bag.filter(function (id) { return ITEM[id].cls === 'wrong'; }).length;
     $('res1c').innerHTML =
-      '<h2>' + (timeUp ? 'Süre doldu!' : 'Çantanı kapattın') + '</h2>' + (HARD ? '<p style="margin:0 0 8px"><b>Zor mod · gece</b></p>' : '') +
-      '<div class="total"><div><div class="title">' + titleFor(sc) + '</div><small style="color:var(--muted)">' + G.bag.length + ' eşya topladın</small></div><div class="big">' + sc + ' <small style="font-size:14px;color:var(--muted)">/ 100</small></div></div>' +
+      '<h2>' + (how === 'exit' ? 'Evden çıktın!' : timeUp ? 'Süre doldu!' : 'Çantanı kapattın') + '</h2>' + (HARD ? '<p style="margin:0 0 8px"><b>Zor mod · gece</b></p>' : '') +
+      '<div class="total"><div><div class="title">' + titleFor(sc) + '</div><small style="color:var(--muted)">' + G.bag.length + ' eşya topladın</small></div><div class="big">' + sc + ' <small style="font-size:14px;color:var(--muted)">/ 100</small></div></div>' + brk +
       (sc < 50 ? '<p><b>Tekrar dene, çantayı daha iyi hazırla!</b></p>' : '') + '<p>' + (coreMissed ? coreMissed + ' temel eşyayı atladın. ' : 'Tüm temel eşyaları topladın. ') + (wrongN ? wrongN + ' yanlış eşya aldın.' : 'Yanlış eşya almadın.') + '</p>' +
       '<div class="sec">Topladıkların</div>' +
       (rows ? '<ul class="list">' + rows + '</ul>' : '<p>Çantan boş kaldı.</p>') +
@@ -2994,6 +3091,15 @@ panel(17.06, 5.46, 18.1, 5.46 + tk); panel(18.9, 5.46, 19.875, 5.46 + tk);
     grabBtn.textContent = held ? 'Bırak' : 'Tut';
   }
 
+  var doorT = 0;
+  function doorUpdate(dt) {
+    var inZone = walk.x > 18.3 && walk.x < 20.5 && Math.abs(walk.z - 4.7) < 1.2;
+    var near = G.state === 'play' && inZone && (-Math.sin(walk.yaw) > 0.3 || walk.x > 19.5);
+    doorT += ((near ? 1 : 0) - doorT) * Math.min(1, dt * 5); if (doorT < 0.002) doorT = 0;
+    doorLeaf.rotation.y = doorT * 1.5;
+    var bi = colliders.indexOf(doorBlock);
+    if (G.state === 'play') { if (doorT > 0.55 && bi >= 0) colliders.splice(bi, 1); else if (doorT < 0.4 && bi < 0 && walk.x < 19.6) colliders.push(doorBlock); }
+  }
   function gameTick(dt) {
     if (G.state === 'play' || G.state === 'demo') physFrame(dt);
     if (G.state === 'demo') {
@@ -3003,6 +3109,8 @@ panel(17.06, 5.46, 18.1, 5.46 + tk); panel(18.9, 5.46, 19.875, 5.46 + tk);
       return;
     }
     if (G.state !== 'play') return;
+    doorUpdate(dt);
+    if (walk.x > 20.4 && Math.abs(walk.z - 4.7) < 1.0) { finishGame(false, 'exit'); return; }
     G.left -= dt;
     clockEl.textContent = fmtClock(G.left);
     clockEl.parentNode.classList.toggle('warn', G.left <= 20);
@@ -3231,7 +3339,7 @@ panel(17.06, 5.46, 18.1, 5.46 + tk); panel(18.9, 5.46, 19.875, 5.46 + tk);
     var g = vHelp.g; g.clearRect(0, 0, 960, 528);
     g.fillStyle = '#F6F3EC'; vrr(g, 4, 4, 952, 520, 30); g.fill(); g.fillStyle = '#C2410C'; vrr(g, 4, 4, 952, 96, 30); g.fill(); g.fillRect(4, 60, 952, 40);
     g.textBaseline = 'middle'; g.textAlign = 'left'; g.fillStyle = '#FFFFFF'; g.font = '700 50px ' + FONT; g.fillText('KUMANDALAR', 40, 54);
-    var L = [['Sol çubuk', 'yürü'], ['Sağ çubuk', 'serbest dön (basarak kademeli)'], ['Tetik', 'eşyayı çantaya at'], ['Yan tuş (grip)', 'eşyayı eline al · bırakınca fırlar'], ['B / Y tuşu', 'çantanı aç'], ['Kapıdan girince', 'deprem uyarısı gelir ve süre başlar']];
+    var L = [['Sol çubuk', 'yürü'], ['Sağ çubuk', 'serbest dön (basarak kademeli)'], ['Tetik', 'eşyayı çantaya at'], ['Yan tuş (grip)', 'eşyayı eline al · bırakınca fırlar'], ['B / Y tuşu', 'çantanı aç'], ['Kapıdan girince', 'süre başlar · hazırsan kapıdan çık']];
     L.forEach(function (r, i) { var y = 150 + i * 62; g.fillStyle = '#C2410C'; g.font = '700 36px ' + FONT; g.fillText(r[0], 40, y); g.fillStyle = '#1E2A33'; g.font = '600 34px ' + FONT; g.fillText(r[1], 360, y); });
     vHelp.tex.needsUpdate = true;
   }
@@ -3249,9 +3357,10 @@ panel(17.06, 5.46, 18.1, 5.46 + tk); panel(18.9, 5.46, 19.875, 5.46 + tk);
       ui.head = { title: 'Sarsıntı sona erdi.', sub: 'Acil toplanma alanındasın, güvendesin.' };
       ui.foot = [{ label: 'Sonucu gör', col: '#E2640B', fn: function () { $('seeBtn').click(); } }];
     } else if (kind === 'r1') {
-      var sc = scoreOf(), coreMissed = ITEMS.filter(function (it) { return it.cls === 'core' && G.bag.indexOf(it.id) < 0; }).length, wrongN = G.bag.filter(function (id) { return ITEM[id].cls === 'wrong'; }).length;
-      ui.head = { title: VR.timeUp ? 'Süre doldu!' : 'Çantanı kapattın', sub: (HARD ? 'Zor mod · gece · ' : '') + G.bag.length + ' eşya topladın', big: sc, tag: titleFor(sc) };
+      var R0 = G.res || { final: scoreOf(), item: scoreOf(), bonus: 0, pen: 0, how: 'btn', left: 0 }, sc = R0.final, coreMissed = ITEMS.filter(function (it) { return it.cls === 'core' && G.bag.indexOf(it.id) < 0; }).length, wrongN = G.bag.filter(function (id) { return ITEM[id].cls === 'wrong'; }).length;
+      ui.head = { title: R0.how === 'exit' ? 'Evden çıktın!' : (VR.timeUp ? 'Süre doldu!' : 'Çantanı kapattın'), sub: (HARD ? 'Zor mod · gece · ' : '') + G.bag.length + ' eşya topladın', big: sc, tag: titleFor(sc) };
       var msg = (sc < 50 ? 'Tekrar dene, çantayı daha iyi hazırla! ' : '') + (coreMissed ? coreMissed + ' temel eşyayı atladın. ' : 'Tüm temel eşyaları topladın. ') + (wrongN ? wrongN + ' yanlış eşya puanını düşürdü.' : '');
+      ui.rows.push({ k: 'note', text: 'Eşya puanı ' + R0.item + (R0.how === 'exit' ? ' · Süre bonusu +' + R0.bonus + ' (' + R0.left + ' sn kala çıktın)' : ' · Sarsıntıya evde yakalandın −' + R0.pen) });
       ui.rows.push({ k: 'note', text: msg });
       ui.rows.push({ k: 'sec', text: 'Topladıkların' });
       if (!G.bag.length) ui.rows.push({ k: 'note', text: 'Çantan boş kaldı.' });
