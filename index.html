@@ -1607,7 +1607,7 @@ panel(17.06, 5.46, 18.1, 5.46 + tk); panel(18.9, 5.46, 19.875, 5.46 + tk);
   var HINTS = {
     plan: 'Kuzey üstte. Yakınlaştırmak için kaydır ya da iki parmakla sıkıştır.',
     orbit: 'Sürükleyerek döndür, kaydırarak yakınlaştır.',
-    walk: coarse ? 'Düğmelerle yürü, ekranı sürükleyerek etrafına bak.' : 'W A S D ile yürü, ok tuşlarıyla dön ya da sürükleyerek etrafına bak.'
+    walk: coarse ? 'Düğmelerle yürü, ekranı sürükleyerek etrafına bak.' : 'W A S D ile yürü, ok tuşlarıyla dön ya da sürükleyerek etrafına bak. Gece modunda tıkla: fare ile serbest bak (Esc bırakır).'
   };
 
   var lawn = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: new THREE.Color(0x86A06E).convertSRGBToLinear(), roughness: 1 })); lawn.rotation.x = -Math.PI / 2; lawn.position.set(10, -0.34, 5);
@@ -1671,14 +1671,15 @@ panel(17.06, 5.46, 18.1, 5.46 + tk); panel(18.9, 5.46, 19.875, 5.46 + tk);
 
   var keys = {}, pad = {};
   function updateWalk(dt) {
+    if (document.pointerLockElement === canvas && !nightLook()) document.exitPointerLock();
     if (G.state === 'alert' || G.state === 'quake') { keys = {}; pad = {}; }
     var fwd = 0, str = 0, turn = 0;
     if (keys.KeyW || keys.ArrowUp || pad.f) fwd += 1;
     if (keys.KeyS || keys.ArrowDown || pad.b) fwd -= 1;
     if (keys.KeyD || pad.r) str += 1;
     if (keys.KeyA || pad.l) str -= 1;
-    if (keys.ArrowLeft || keys.KeyQ || pad.tl) turn += 1;
-    if (keys.ArrowRight || keys.KeyE || pad.tr) turn -= 1;
+    if (keys.ArrowLeft || pad.tl) turn += 1;
+    if (keys.ArrowRight || pad.tr) turn -= 1;
     walk.yaw += turn * 1.8 * dt;
     if (fwd || str) {
       var norm = (fwd && str) ? 0.7071 : 1;
@@ -1719,6 +1720,7 @@ panel(17.06, 5.46, 18.1, 5.46 + tk); panel(18.9, 5.46, 19.875, 5.46 + tk);
   canvas.addEventListener('pointerup', release);
   canvas.addEventListener('pointercancel', release);
   canvas.addEventListener('pointermove', function (e) {
+    if (document.pointerLockElement === canvas) return;   // kilitliyken bakış yalnızca mousemove'dan gelir (çift uygulama olmasın)
     var p = ptrs[e.pointerId];
     if (!p) return;
     var dx = e.clientX - p.x, dy = e.clientY - p.y;
@@ -1739,6 +1741,40 @@ panel(17.06, 5.46, 18.1, 5.46 + tk); panel(18.9, 5.46, 19.875, 5.46 + tk);
       lastPinch = dist;
     }
   });
+  /* gece (zor) modu: fare ile serbest bakış (pointer lock) — tıkla, fareyi oynat; Esc bırakır */
+  function nightLook() { return typeof HARD !== 'undefined' && HARD && mode === 'walk' && !(VR && VR.on); }
+  canvas.addEventListener('click', function () {
+    if (nightLook() && !coarse && canvas.requestPointerLock && document.pointerLockElement !== canvas) { try { var r = canvas.requestPointerLock(); if (r && r.catch) r.catch(function () {}); } catch (er) {} }
+  });
+  var LOOK_SENS = 0.0022;
+  document.addEventListener('mousemove', function (e) {
+    if (document.pointerLockElement !== canvas || mode !== 'walk') return;
+    var mx = e.movementX || 0, my = e.movementY || 0;
+    if (Math.abs(mx) > 240 || Math.abs(my) > 240) return;   // tarayıcının ara sıra ürettiği sıçrama değerlerini yut
+    walk.yaw -= mx * LOOK_SENS;
+    walk.pitch = clamp(walk.pitch - my * LOOK_SENS, -1.45, 1.45);
+  });
+  document.addEventListener('pointerlockchange', function () {
+    ptrs = {}; ptrCount = 0; lastPinch = 0; downAt = null;
+    var on = document.pointerLockElement === canvas;
+    document.body.classList.toggle('looklock', on);
+    if (!on) { keys = {}; }
+  });
+  /* kilitliyken tıklama = ekran ortasındaki nişandaki eşyayı al; sağ tık / E = tut-bırak */
+  canvas.addEventListener('mousedown', function (e) {
+    if (document.pointerLockElement !== canvas) return;
+    if (G.state !== 'play' && G.state !== 'demo') return;
+    if (e.button === 0) { var t = held ? held.id : G.aim; if (t) collect(t); }
+    else if (e.button === 2) { if (held) releaseHeld(false); else if (G.aim) grabStart(G.aim); }
+  });
+  window.addEventListener('keydown', function (e) {   // B / Tab: çanta (kilit açılır)
+    if ((e.code === 'KeyB' || e.code === 'Tab') && mode === 'walk' && (G.state === 'play' || G.state === 'demo')) {
+      e.preventDefault();
+      if (sheets.bag.classList.contains('on')) { showSheet(''); }
+      else { if (document.pointerLockElement) document.exitPointerLock(); renderBag(); showSheet('bag'); }
+    }
+  });
+  canvas.addEventListener('contextmenu', function (e) { if (nightLook()) e.preventDefault(); });
   function zoomBy(f) {
     if (mode === 'orbit') { orb.r = clamp(orb.r * f, 4, 40); applyOrbit(); }
     else if (mode === 'plan') { PLAN.scale = clamp(PLAN.scale * f, 0.35, 1.6); applyPlan(); }
@@ -1805,7 +1841,7 @@ panel(17.06, 5.46, 18.1, 5.46 + tk); panel(18.9, 5.46, 19.875, 5.46 + tk);
 
   var last = performance.now();
   var NIGHT = false, HARD = false, haloSp = null;
-  var flash = new THREE.SpotLight(0xFFF1D2, 0, 12, 0.2, 0.8, 1.2);
+  var flash = new THREE.SpotLight(0xFFF1D2, 0, 13, 0.3, 0.85, 1.2);
   flash.position.set(0.1, -0.1, 0.1); camera.add(flash); camera.add(flash.target); flash.target.position.set(0, -0.02, -6);
   var lawnDay = null;
   function setNight(on) {
@@ -2494,7 +2530,7 @@ panel(17.06, 5.46, 18.1, 5.46 + tk); panel(18.9, 5.46, 19.875, 5.46 + tk);
   }
   var welcomeT = 0;
   function startDemo() {
-    alertStop(); endClear(); SWAY.forEach(function (s) { s.g.rotation.set(0, 0, 0); }); HARD = false; setNight(false);
+    alertStop(); endClear(); SWAY.forEach(function (s) { s.g.rotation.set(0, 0, 0); }); HARD = false; setNight(false); try { if (document.pointerLockElement) document.exitPointerLock(); } catch (er) {}
     clearTimeout(welcomeT); welcomeT = setTimeout(function () { if (G.state === 'demo' && WELCOME_AUDIO) playVoice(WELCOME_AUDIO, null, true); }, 2000);
     G.state = 'demo'; G.bag = []; G.left = GAME_SEC;
     bagN.textContent = '0';
@@ -3135,6 +3171,7 @@ panel(17.06, 5.46, 18.1, 5.46 + tk); panel(18.9, 5.46, 19.875, 5.46 + tk);
   var downAt = null;
   canvas.addEventListener('pointerdown', function (e) { downAt = { x: e.clientX, y: e.clientY }; });
   canvas.addEventListener('pointerup', function (e) {
+    if (document.pointerLockElement === canvas) { downAt = null; return; }
     if (!downAt || (G.state !== 'play' && G.state !== 'demo')) return;
     var moved = Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y);
     downAt = null;
