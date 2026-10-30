@@ -1669,7 +1669,7 @@ panel(17.06, 5.46, 18.1, 5.46 + tk); panel(18.9, 5.46, 19.875, 5.46 + tk);
     return [x, z];
   }
 
-  var keys = {}, pad = {};
+  var keys = {}, pad = {}, GPB = { a: false, x: false };
   function updateWalk(dt) {
     if (document.pointerLockElement === canvas && !nightLook()) document.exitPointerLock();
     if (G.state === 'alert' || G.state === 'quake') { keys = {}; pad = {}; }
@@ -1681,6 +1681,23 @@ panel(17.06, 5.46, 18.1, 5.46 + tk); panel(18.9, 5.46, 19.875, 5.46 + tk);
     if (keys.ArrowLeft || pad.tl) turn += 1;
     if (keys.ArrowRight || pad.tr) turn -= 1;
     walk.yaw += turn * 1.8 * dt;
+    /* oyun kolu (Gamepad API): sol çubuk yürü, sağ çubuk serbest bakış; A / RT eşyayı al, X tut */
+    var gx = 0, gy = 0;
+    try {
+      var gps = navigator.getGamepads ? navigator.getGamepads() : [];
+      for (var gi = 0; gi < gps.length; gi++) {
+        var gp = gps[gi]; if (!gp || !gp.connected || gp.axes.length < 4) continue;
+        var lx = gp.axes[0], ly = gp.axes[1], rx2 = gp.axes[2], ry2 = gp.axes[3];
+        if (Math.hypot(lx, ly) > 0.18) { str += lx; fwd -= ly; }
+        if (Math.abs(rx2) > 0.15) walk.yaw -= Math.sign(rx2) * (Math.abs(rx2) - 0.15) / 0.85 * 2.4 * dt;
+        if (Math.abs(ry2) > 0.15) walk.pitch = clamp(walk.pitch - Math.sign(ry2) * (Math.abs(ry2) - 0.15) / 0.85 * 1.8 * dt, -1.45, 1.45);
+        var bA = !!(gp.buttons[0] && gp.buttons[0].pressed) || !!(gp.buttons[7] && gp.buttons[7].pressed), bX = !!(gp.buttons[2] && gp.buttons[2].pressed);
+        if (bA && !GPB.a && (G.state === 'play' || G.state === 'demo')) { var gt = held ? held.id : G.aim; if (gt) collect(gt); }
+        if (bX && !GPB.x && (G.state === 'play' || G.state === 'demo')) { if (held) releaseHeld(false); else if (G.aim) grabStart(G.aim); }
+        GPB.a = bA; GPB.x = bX; break;
+      }
+    } catch (ge) { }
+    fwd = clamp(fwd, -1, 1); str = clamp(str, -1, 1);
     if (fwd || str) {
       var norm = (fwd && str) ? 0.7071 : 1;
       var sp = 1.9 * dt * norm * ((keys.ShiftLeft || keys.ShiftRight) ? 1.6 : 1);
@@ -3540,6 +3557,10 @@ panel(17.06, 5.46, 18.1, 5.46 + tk); panel(18.9, 5.46, 19.875, 5.46 + tk);
   function vrUpdate(dt) {
     var now = performance.now();
     VR.sx = VR.sy = VR.sz = 0;
+    try {   // kumanda kaynaklarını her karede oturumdan tazele (connected olayı kaçsa da çubuklar çalışsın)
+      var xs = renderer.xr.getSession && renderer.xr.getSession();
+      if (xs && xs.inputSources) for (var ci = 0; ci < VR.ctl.length; ci++) { var is = xs.inputSources[ci]; if (is && is.gamepad && VR.ctl[ci].src !== is) { VR.ctl[ci].src = is; VR.ctl[ci].hand = is.handedness; vrAssignFlash(); } }
+    } catch (er) { }
     if (!vrHead()) { vrApply(); return; }
     if (VR.pend) {
       var pp = VR.pend; VR.pend = null; VR.ry = pp.yaw - vrHL;
@@ -3576,11 +3597,11 @@ panel(17.06, 5.46, 18.1, 5.46 + tk); panel(18.9, 5.46, 19.875, 5.46 + tk);
       var tx = vrAxis(R, 0), ty = vrAxis(R, 1);
       var stP = vrBtn(R, 3);   // sağ çubuğa bas: serbest dönüş ↔ kademeli dönüş
       if (stP && !VR.stP) { VR.stepTurn = !VR.stepTurn; vrToast(VR.stepTurn ? 'Dönüş: kademeli (30°)' : 'Dönüş: serbest'); } VR.stP = stP;
-      if (!uiOn && !VR.stepTurn && Math.abs(tx) > 0.15) {   // serbest bakış: çubukla yumuşak dönüş
+      if ((!uiOn || Math.abs(tx) > Math.abs(ty)) && !VR.stepTurn && Math.abs(tx) > 0.15) {   // serbest bakış: çubukla yumuşak dönüş
         var bx1 = hw.x, bz1 = hw.z, k1 = (Math.abs(tx) - 0.15) / 0.85;
-        VR.ry += (tx > 0 ? -1 : 1) * k1 * 1.5 * dt; vrCalcHW();
+        VR.ry += (tx > 0 ? -1 : 1) * k1 * 2.0 * dt; vrCalcHW();
         VR.bx += bx1 - vrHW.x; VR.bz += bz1 - vrHW.z; vrCalcHW();
-      } else if (!uiOn && VR.stepTurn && Math.abs(tx) > 0.7 && VR.snap) {
+      } else if ((!uiOn || Math.abs(tx) > Math.abs(ty)) && VR.stepTurn && Math.abs(tx) > 0.7 && VR.snap) {
         VR.snap = false; var bx0 = hw.x, bz0 = hw.z;
         VR.ry += (tx > 0 ? -1 : 1) * Math.PI / 6; vrCalcHW();
         VR.bx += bx0 - vrHW.x; VR.bz += bz0 - vrHW.z; vrCalcHW();
